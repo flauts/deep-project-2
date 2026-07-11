@@ -1,0 +1,51 @@
+# Recording quality filter configuration.
+# All thresholds are tunable. Re-run scripts/filter_recordings.py after changes.
+
+# --- Hard exclusions (recording is dropped if ANY of these match) ---
+
+# Drop recordings where the recorded agent is NOT human_keyboard.
+# This excludes bot baselines (greedy_full_task, random_motion, stay, random).
+exclude_non_human: true
+
+# Drop recordings with score == 0 AND idle percentage >= this threshold.
+# Catches players who disengaged / quit / did nothing.
+min_idle_excluded_if_zero_score: 70.0
+
+# Drop recordings with action entropy below this threshold.
+# Catches single-action spam (e.g., stayed the whole time or held one key).
+min_entropy: 0.3
+
+# Drop recordings shorter than this many timesteps.
+# Catches truncated / quit-early episodes.
+min_length: 100
+
+# --- Tier classification (for BC loss weighting) ---
+
+# Tiers are assigned per-layout based on official score percentile.
+# official_score = 10000 * num_soups + 10 * (horizon - last_soup) + (horizon - first_soup)
+tier:
+  gold:
+    min_percentile: 75
+    min_soups: 4
+    weight: 1.0
+  silver:
+    min_percentile: 50
+    min_soups: 2
+    weight: 0.6
+  bronze:
+    weight: 0.25
+
+# --- Layout eligibility gate ---
+
+# Layouts with fewer than this many kept recordings are flagged "low-coverage".
+# They are included in BC training but excluded from per-layout evaluation.
+min_recordings_for_eval: 3
+
+# --- Paths ---
+
+# Root directory to scan for recordings (relative to overcooked/)
+recordings_root: "."
+
+# Output paths (relative to project root)
+output_tsv: "train/data/recording_quality.tsv"
+output_npz: "train/data/consolidated_filtered.npz"

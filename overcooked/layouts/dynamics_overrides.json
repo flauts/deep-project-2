@@ -1,0 +1,32 @@
+{
+  "chavez_room_attention_t": {
+    "old_dynamics": false
+  },
+  "diagonal_run_attention_t": {
+    "old_dynamics": false
+  },
+  "jamcy_room_attention_t": {
+    "old_dynamics": false
+  },
+  "m_room_attention_t": {
+    "old_dynamics": false
+  },
+  "maze_kitchen_attention_t": {
+    "old_dynamics": false
+  },
+  "salinas_custom_04_relu67_vs_relu69": {
+    "old_dynamics": false
+  },
+  "tomato_easy_1_squeeze_excitationnnnnnnnn": {
+    "old_dynamics": false
+  },
+  "tomato_easy_2_squeeze_excitationnnnnnnnn": {
+    "old_dynamics": false
+  },
+  "tomato_hard_1_squeeze_excitationnnnnnnnn": {
+    "old_dynamics": false
+  },
+  "tomato_hard_2_squeeze_excitationnnnnnnnn": {
+    "old_dynamics": false
+  }
+}

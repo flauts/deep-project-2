@@ -1,0 +1,48 @@
+seed: 42
+mode: evaluation
+environment:
+  layout_name: null
+  layout_file: layouts/tomato_hard_2_squeeze_excitationnnnnnnnn.layout
+  horizon: 400
+  old_dynamics: false
+policies:
+  agent_0:
+    type: python_class
+    path: policies/trained_agent.py
+    class_name: TrainedAgent
+    name: trained_agent
+    config:
+      model_path: ../train/models/bc_agent.pt
+      deterministic: true
+    random_action_prob: 0.0
+    max_action_time_ms: 100
+    invalid_action: stay
+    timeout_action: stay
+  agent_1:
+    type: builtin
+    name: greedy_full_task
+    ingredient: onion
+    avoid_teammate: true
+    random_action_prob: 0.0
+    max_action_time_ms: 100
+    invalid_action: stay
+    timeout_action: stay
+execution:
+  num_episodes: 3
+  episode_seeds:
+  - 42
+  - 43
+  - 44
+  swap_agent_positions: true
+observation:
+  type: featurized
+  include_agent_index: true
+rendering:
+  mode: none
+  fps: 0
+  save_gif: false
+logging:
+  output_dir: outputs/eval_tomato_hard_2
+  save_step_log: true
+  save_episode_summary: true
+  save_trajectory_pickle: false

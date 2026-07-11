@@ -1,0 +1,120 @@
+# ==============================================================================
+# Archivos binarios de datos, grabaciones y demostraciones (Evitar bloat)
+# ==============================================================================
+*.pkl
+*.npz
+*.metadata.json
+*.h5
+*.hdf5
+
+# Archivos comprimidos (envíos de demostraciones/grabaciones)
+*.7z
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+
+# Documentos locales o temporales en carpetas de equipos
+*.docx
+*.pdf
+
+# ==============================================================================
+# Carpetas de equipos/grupos dentro de overcooked/
+# ==============================================================================
+# Ignorar cualquier carpeta de equipo colocada en overcooked/ para evitar que
+# sature el repositorio con sus grabaciones o archivos locales.
+# Solo se mantienen los directorios canónicos del motor y del proyecto:
+overcooked/*
+!overcooked/src/
+!overcooked/policies/
+!overcooked/configs/
+!overcooked/layouts/
+!overcooked/scripts/
+!overcooked/data/
+!overcooked/*.md
+!overcooked/*.txt
+!overcooked/*.json
+
+# Dentro de overcooked/data ignoramos demostraciones pesadas y user_recordings
+overcooked/data/user_recordings/
+overcooked/data/demonstrations/*.7z
+overcooked/data/demonstrations/*.zip
+overcooked/data/demonstrations/*.pkl
+overcooked/data/demonstrations/*.npz
+
+# ==============================================================================
+# Salidas del pipeline de entrenamiento y datasets procesados
+# ==============================================================================
+train/data/consolidated*.npz
+train/data/recording_quality.tsv
+train/data/*.json
+!train/data/dataset_stats.json
+
+train/models/*.pt
+train/models/*.history.json
+train/train/models/
+
+outputs/
+overcooked/outputs/
+runs/
+wandb/
+*.csv
+
+# ==============================================================================
+# Modelos y checkpoints de aprendizaje profundo (PyTorch, ONNX, etc.)
+# ==============================================================================
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.safetensors
+
+# ==============================================================================
+# Cachés de Python, compilados y entornos virtuales
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+develop-eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+.installed.cfg
+MANIFEST
+
+# Entornos virtuales
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ==============================================================================
+# IDEs, editores y archivos del sistema operativo
+# ==============================================================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+.ipynb_checkpoints/
+
+# ==============================================================================
+# Herramientas de IA (Gemini, agentes) y registros
+# ==============================================================================
+.gemini/
+.agents/
+*.log

@@ -1,0 +1,14 @@
+{
+    "grid": """
+XPXXXXX
+O    1X
+X     S
+X 2   X
+XXXDXXX
+""",
+    "start_bonus_orders": [],
+    "start_all_orders": [
+        {"ingredients": ["onion", "onion", "onion"]}
+    ],
+    "rew_shaping_params": None
+}

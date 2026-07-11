@@ -1,0 +1,11 @@
+environment:
+  layout_name: forced_coordination   # or forced_coordination, simple_o, etc.
+  layout_file: null
+  horizon: 400
+policies:
+  agent_0:
+    type: builtin
+    name: greedy_full_task       # or bc_agent, or a second human_keyboard!
+  agent_1:
+    type: builtin
+    name: human_keyboard         # YOU play this agent via Keyboard
