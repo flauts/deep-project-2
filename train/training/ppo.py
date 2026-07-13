@@ -10,7 +10,8 @@ import numpy as np
 class PPOUpdater:
     def __init__(self, policy, lr=3e-4, clip=0.2, entropy_coef=0.01,
                  value_coef=0.5, max_grad_norm=0.5, ppo_epochs=4, batch_size=64,
-                 bc_policy=None, kl_coef=0.05):
+                 bc_policy=None, kl_coef=0.05,
+                 bc_data=None, bc_coef=0.0):
         self.policy = policy
         self.bc_policy = bc_policy
         self.kl_coef = kl_coef
@@ -21,6 +22,9 @@ class PPOUpdater:
         self.max_grad_norm = max_grad_norm
         self.ppo_epochs = ppo_epochs
         self.batch_size = batch_size
+        self.bc_data = bc_data  # dict with "obs", "actions", "weights" tensors on device
+        self.bc_coef = bc_coef
+        self.bc_batch_size = min(256, len(bc_data["obs"])) if bc_data else 0
 
     def update(self, obs, actions, old_log_probs, advantages, returns, values):
         obs = torch.FloatTensor(obs)
@@ -84,6 +88,24 @@ class PPOUpdater:
                     )
 
                 loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy.mean() + self.kl_coef * kl_loss
+
+                # BC auxiliary loss: supervise on recorded demonstrations
+                bc_loss_val = torch.tensor(0.0, device=loss.device)
+                if self.bc_data is not None and self.bc_coef > 0:
+                    bc_batch_idx = np.random.choice(
+                        len(self.bc_data["obs"]), self.bc_batch_size, replace=False
+                    )
+                    b_bc_obs = self.bc_data["obs"][bc_batch_idx]
+                    b_bc_actions = self.bc_data["actions"][bc_batch_idx]
+                    b_bc_logits = self.policy.forward(b_bc_obs)[0]
+                    bc_per_sample = nn.functional.cross_entropy(b_bc_logits, b_bc_actions, reduction="none")
+                    if "weights" in self.bc_data:
+                        b_bc_weights = self.bc_data["weights"][bc_batch_idx]
+                        bc_loss_val = (bc_per_sample * b_bc_weights).mean()
+                    else:
+                        bc_loss_val = bc_per_sample.mean()
+
+                loss = loss + self.bc_coef * bc_loss_val
 
                 self.optimizer.zero_grad()
                 loss.backward()

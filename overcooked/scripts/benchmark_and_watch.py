@@ -35,6 +35,8 @@ try:
     from src.rendering import Renderer
     from env import SelfPlayEnv
     from overcooked_ai_py.mdp.overcooked_mdp import OvercookedGridworld
+    from policies.basic_policies import GreedyFullTaskPolicy
+    from overcooked_ai_py.mdp.actions import Action
 except ImportError as e:
     print(f"[ERROR] Import failed: {e}")
     sys.exit(1)
@@ -70,6 +72,8 @@ def main():
     parser.add_argument("--horizon", type=int, default=400, help="Timesteps per episode")
     parser.add_argument("--fps", type=int, default=12, help="Framerate when watching in Pygame")
     parser.add_argument("--deterministic", action="store_true", help="Use argmax instead of sampling (default false)")
+    parser.add_argument("--partner", type=str, default="self", choices=["self", "greedy"], help="Partner type: self (self-play) or greedy")
+    parser.add_argument("--agent-index", type=int, default=0, choices=[0, 1], help="Which agent index our model plays (0 or 1). Partner plays the other.")
     args = parser.parse_args()
 
     model_path = PROJECT_ROOT / args.model
@@ -84,10 +88,6 @@ def main():
     print(f"Layouts: {len(layouts)} maps | Episodes per map: {args.episodes} | Horizon: {args.horizon}")
     print(f"Mode: {'WATCHING LIVE (Pygame Window)' if args.watch else 'FAST EVALUATION (No Window)'}")
     print(f"{'='*80}\n")
-
-    agent_cfg = {"model_path": str(model_path), "deterministic": args.deterministic}
-    agent0 = TrainedAgent(agent_cfg)
-    agent1 = TrainedAgent(agent_cfg)
 
     renderer = Renderer({"mode": "window" if args.watch else "none", "fps": args.fps, "window_caption": f"Benchmarking {args.model}"})
 
@@ -119,6 +119,17 @@ def main():
                 break
 
             obs = env.reset()
+            
+            agent_cfg = {"model_path": str(model_path), "deterministic": args.deterministic, "layout_name": layout_name}
+            my_agent = TrainedAgent(agent_cfg)
+            
+            if args.partner == "greedy":
+                partner_agent = GreedyFullTaskPolicy(ingredient="onion", avoid_teammate=True)
+                partner_agent.set_mdp(env.mdp)
+                partner_agent.agent_index = 1 if args.agent_index == 0 else 0
+            else:
+                partner_agent = TrainedAgent(agent_cfg)
+
             if args.watch:
                 # Get inner overcooked env for rendering
                 inner_env = env.env if hasattr(env, "env") else env
@@ -126,8 +137,21 @@ def main():
 
             total_r = 0
             for step in range(args.horizon):
-                a0 = agent0.act(obs[0])
-                a1 = agent1.act(obs[1])
+                if args.agent_index == 0:
+                    a0 = my_agent.act(obs[0])
+                    if args.partner == "greedy":
+                        p_act, _ = partner_agent.action(env.env.state)
+                        a1 = Action.ACTION_TO_INDEX[p_act] if p_act in Action.ACTION_TO_INDEX else 4
+                    else:
+                        a1 = partner_agent.act(obs[1])
+                else:
+                    if args.partner == "greedy":
+                        p_act, _ = partner_agent.action(env.env.state)
+                        a0 = Action.ACTION_TO_INDEX[p_act] if p_act in Action.ACTION_TO_INDEX else 4
+                    else:
+                        a0 = partner_agent.act(obs[0])
+                    a1 = my_agent.act(obs[1])
+                    
                 acts = (a0, a1)
 
                 obs, rews, dones, infos = env.step(acts)

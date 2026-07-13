@@ -1,5 +1,5 @@
 {
-  "total_timesteps": 292742,
+  "total_timesteps": 296742,
   "obs_dim": 96,
   "num_layouts": 68,
   "layout_names": [
@@ -73,16 +73,16 @@
     "user_forced_coordination.npz"
   ],
   "action_distribution": {
-    "0": 31713,
-    "1": 26188,
-    "2": 42141,
-    "3": 43691,
-    "4": 75501,
-    "5": 73508
+    "0": 32276,
+    "1": 26609,
+    "2": 42755,
+    "3": 44276,
+    "4": 76521,
+    "5": 74305
   },
   "tier_distribution": {
-    "gold": 180782,
-    "silver": 69429,
+    "gold": 183232,
+    "silver": 70979,
     "bronze": 42531
   },
   "per_layout": {
@@ -227,22 +227,22 @@
       }
     },
     "counter_circuit": {
-      "timesteps": 24750,
+      "timesteps": 27150,
       "episodes": 10,
-      "avg_score": 382.6,
-      "max_score": 3826.0,
+      "avg_score": 519.7,
+      "max_score": 5197.0,
       "min_score": 0.0,
       "action_dist": {
-        "0": 2191,
-        "1": 1942,
-        "2": 6365,
-        "3": 6355,
-        "4": 5994,
-        "5": 1903
+        "0": 2556,
+        "1": 2225,
+        "2": 6815,
+        "3": 6806,
+        "4": 6449,
+        "5": 2299
       },
       "tier_counts": {
-        "gold": 6950,
-        "silver": 17800,
+        "gold": 7800,
+        "silver": 19350,
         "bronze": 0
       }
     },
@@ -287,21 +287,21 @@
       }
     },
     "cramped_room": {
-      "timesteps": 27622,
+      "timesteps": 29222,
       "episodes": 20,
-      "avg_score": 429.0,
-      "max_score": 3840.0,
+      "avg_score": 470.0,
+      "max_score": 4660.0,
       "min_score": 60.0,
       "action_dist": {
-        "0": 2599,
-        "1": 1888,
-        "2": 3393,
-        "3": 5195,
-        "4": 9320,
-        "5": 5227
+        "0": 2797,
+        "1": 2026,
+        "2": 3557,
+        "3": 5329,
+        "4": 9885,
+        "5": 5628
       },
       "tier_counts": {
-        "gold": 22100,
+        "gold": 23700,
         "silver": 2879,
         "bronze": 2643
       }

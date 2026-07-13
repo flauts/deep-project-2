@@ -69,15 +69,17 @@ def main():
             try:
                 data = np.load(npz_path, allow_pickle=True)
                 n = len(data["actions"])
-                layout = data["metadata_json"][0] if "metadata_json" in data.files else "unknown"
 
-                # Extract layout name from metadata
+                # Extract layout name from metadata_json (may be 0-dim scalar)
+                layout_name = "unknown"
                 try:
-                    meta = json.loads(layout) if isinstance(layout, str) else layout
-                    env_info = meta.get("environment", {})
-                    layout_name = env_info.get("layout_name", "unknown")
+                    mj = data.get("metadata_json")
+                    if mj is not None:
+                        raw = str(mj.item()) if hasattr(mj, 'item') else str(mj)
+                        meta = json.loads(raw) if isinstance(raw, str) else raw
+                        layout_name = meta.get("environment", {}).get("layout_name", "unknown")
                 except Exception:
-                    layout_name = "unknown"
+                    pass
 
                 obs = data["obs"].astype(np.float32)
                 if obs.ndim == 2:
@@ -97,7 +99,7 @@ def main():
                 all_rewards.append(rewards)
                 all_dones.append(dones)
                 all_role_swaps.append(role_swaps)
-                all_layouts.extend([layout_name] * n)
+                all_layouts.extend([layout_name or "unknown"] * n)
                 all_weights.extend([1.0] * n)  # all gold — user's own recordings
                 all_tiers.extend([0] * n)  # tier 0 = gold
                 all_episode_ids.extend([episode_id_counter] * n)

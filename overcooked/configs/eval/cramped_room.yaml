@@ -12,7 +12,7 @@ policies:
     class_name: TrainedAgent
     name: trained_agent
     config:
-      model_path: ../train/models/ppo_agent_best.pt
+      model_path: ../train/models/bc_agent_gnn.pt
       deterministic: true
       layout_name: cramped_room
     random_action_prob: 0.0

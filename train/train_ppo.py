@@ -73,70 +73,74 @@ def collect_rollouts(env, policy, n_steps, device, partner_policy=None,
 
     obs = env.reset()
     ep_reward = 0.0
+    
+    learner_idx = int(np.random.choice([0, 1])) if has_partner else 0
+    partner_idx = 1 - learner_idx
 
     for step in range(n_steps):
         obs_tensor = torch.FloatTensor(np.array(obs)).to(device)
         with torch.no_grad():
             logits, values = policy.forward(obs_tensor)
 
-        # Agent 0: PPO stochastic
-        dist0 = torch.distributions.Categorical(logits=logits[0:1])
-        act0_t = dist0.sample()
-        act0 = int(act0_t.cpu().item())
-        lp0 = dist0.log_prob(act0_t)
+        dist_learner = torch.distributions.Categorical(logits=logits[learner_idx:learner_idx+1])
+        act_learner_t = dist_learner.sample()
+        act_learner = int(act_learner_t.cpu().item())
+        lp_learner = dist_learner.log_prob(act_learner_t)
 
-        # Agent 1: greedy partner, frozen FCP partner, or PPO self-play
         if partner_policy is not None:
+            partner_policy.agent_index = partner_idx
             partner_action, _ = partner_policy.action(env.env.state)
-            act1 = overcooked_action_to_index(partner_action)
+            act_partner = overcooked_action_to_index(partner_action)
         elif frozen_self_partner is not None:
-            # Frozen past-self (FCP): stochastic sampling from the frozen policy
-            obs1_frozen = torch.FloatTensor(obs[1]).unsqueeze(0).to(device)
+            obs_partner_frozen = torch.FloatTensor(obs[partner_idx]).unsqueeze(0).to(device)
             with torch.no_grad():
-                frozen_logits, _ = frozen_self_partner.forward(obs1_frozen)
+                frozen_logits, _ = frozen_self_partner.forward(obs_partner_frozen)
             frozen_dist = torch.distributions.Categorical(logits=frozen_logits)
-            act1 = int(frozen_dist.sample().item())
+            act_partner = int(frozen_dist.sample().item())
         else:
-            dist1 = torch.distributions.Categorical(logits=logits[1:2])
-            act1_t = dist1.sample()
-            act1 = int(act1_t.cpu().item())
-            lp1 = dist1.log_prob(act1_t)
+            dist_partner = torch.distributions.Categorical(logits=logits[partner_idx:partner_idx+1])
+            act_partner_t = dist_partner.sample()
+            act_partner = int(act_partner_t.cpu().item())
+            lp_partner = dist_partner.log_prob(act_partner_t)
 
-        next_obs, rewards, dones, info = env.step([act0, act1])
+        joint_acts = [0, 0]
+        joint_acts[learner_idx] = act_learner
+        joint_acts[partner_idx] = act_partner
 
-        # Bootstrap value at horizon truncation or rollout end
+        next_obs, rewards, dones, info = env.step(joint_acts)
+
         if dones[0] or step == n_steps - 1:
             with torch.no_grad():
                 _, next_vals = policy.forward(torch.FloatTensor(np.array(next_obs)).to(device))
             boot_raw = next_vals.cpu().numpy()
         else:
-            boot_raw = np.zeros(train_agents, dtype=np.float32)
+            boot_raw = np.zeros(2, dtype=np.float32)
 
-        # Store agent 0
-        agent_obs[0].append(obs[0])
-        agent_act[0].append(act0)
-        agent_lp[0].append(float(lp0.item()))
-        agent_rew[0].append(float(rewards[0]))
+        agent_obs[0].append(obs[learner_idx])
+        agent_act[0].append(act_learner)
+        agent_lp[0].append(float(lp_learner.item()))
+        agent_rew[0].append(float(rewards[learner_idx]))
         agent_done[0].append(bool(dones[0]))
-        agent_val[0].append(float(values[0].cpu().item()))
-        agent_boot[0].append(float(boot_raw[0]))
+        agent_val[0].append(float(values[learner_idx].cpu().item()))
+        agent_boot[0].append(float(boot_raw[learner_idx]))
 
-        # Store agent 1 (self-play only, not FCP or greedy partner)
         if not has_partner:
-            agent_obs[1].append(obs[1])
-            agent_act[1].append(act1)
-            agent_lp[1].append(float(lp1.item()))
-            agent_rew[1].append(float(rewards[1]))
+            agent_obs[1].append(obs[partner_idx])
+            agent_act[1].append(act_partner)
+            agent_lp[1].append(float(lp_partner.item()))
+            agent_rew[1].append(float(rewards[partner_idx]))
             agent_done[1].append(bool(dones[1]))
-            agent_val[1].append(float(values[1].cpu().item()))
-            agent_boot[1].append(float(boot_raw[1]))
+            agent_val[1].append(float(values[partner_idx].cpu().item()))
+            agent_boot[1].append(float(boot_raw[partner_idx]))
 
-        ep_reward += rewards[0]
+        ep_reward += rewards[learner_idx]
 
         if dones[0]:
             ep_rewards.append(ep_reward)
             ep_reward = 0.0
             obs = env.reset()
+            learner_idx = int(np.random.choice([0, 1])) if has_partner else 0
+            partner_idx = 1 - learner_idx
             if partner_policy is not None:
                 partner_policy.set_mdp(env.mdp)
         else:
@@ -254,6 +258,8 @@ def main():
     parser.add_argument("--eval-interval", type=int, default=10000, help="Steps between quick evals (0 to disable)")
     parser.add_argument("--early-stop-patience", type=int, default=3, help="Stop training after N consecutive evals below BC baseline")
     parser.add_argument("--coordination-layouts", type=str, default=None, help="Comma-separated layouts to use self-play (no greedy partner). On these layouts both PPO agents explore together.")
+    parser.add_argument("--coordination-partner-model", type=str, default=None, help="Path to a BC model trained on user recordings. When set, coordination layouts use this as a frozen partner instead of FCP.")
+    parser.add_argument("--bc-loss-coef", type=float, default=0.0, help="BC auxiliary loss coefficient. Adds supervised cross-entropy from consolidated dataset during PPO training (0=disabled).")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -275,7 +281,8 @@ def main():
     active_layout_names = []
     for name in layout_names:
         try:
-            env = build_env_for_layout(name, LAYOUTS_DIR, dynamics_overrides, shaped_reward_scale=args.shaped_reward_scale)
+            scale = 0.0 if (coordination_maps and name in coordination_maps) else args.shaped_reward_scale
+            env = build_env_for_layout(name, LAYOUTS_DIR, dynamics_overrides, shaped_reward_scale=scale)
             envs.append(env)
             active_layout_names.append(name)
             print(f"  {name}: obs_dim={env.obs_dim}")
@@ -326,6 +333,28 @@ def main():
         greedy_partners = [None] * len(envs)
         print(f"Partner type: self_play")
 
+    # Load coordination partner model if provided (for coordination layouts)
+    coord_partner = None
+    if args.coordination_partner_model and coordination_maps:
+        coord_model_path = Path(args.coordination_partner_model)
+        if coord_model_path.exists():
+            print(f"Loading coordination partner from {coord_model_path}...")
+            coord_ckpt = torch.load(str(coord_model_path), map_location="cpu", weights_only=False)
+            coord_topo_dim = coord_ckpt.get("topo_dim", 0)
+            coord_hidden = coord_ckpt.get("hidden", 128)
+            coord_layers = coord_ckpt.get("layers", 2)
+            coord_partner = GraphAttentionPPOPolicy(
+                obs_dim, num_actions, hidden=coord_hidden, layers=coord_layers,
+                topo_dim=coord_topo_dim,
+            ).to(device)
+            coord_partner.load_state_dict(coord_ckpt["model_state"], strict=False)
+            coord_partner.eval()
+            for p in coord_partner.parameters():
+                p.requires_grad = False
+            print(f"  Coordination partner loaded (hidden={coord_hidden}, topo_dim={coord_topo_dim})")
+        else:
+            print(f"  Coordination partner model not found at {coord_model_path}")
+
     # Determine architecture hyperparameters (CLI overrides -> BC model -> defaults)
     bc_path = Path(args.bc_model)
     bc_topo_dim = 0
@@ -372,10 +401,25 @@ def main():
     else:
         print(f"BC model not found at {args.bc_model}, training from scratch")
 
+    # Load BC dataset for auxiliary supervised loss
+    bc_data = None
+    if args.bc_loss_coef > 0:
+        bc_data_path = Path("train/data/consolidated.npz")
+        if bc_data_path.exists():
+            bc_data_np = np.load(str(bc_data_path))
+            bc_obs = torch.FloatTensor(bc_data_np["obs"]).to(device)
+            bc_actions = torch.LongTensor(bc_data_np["actions"]).to(device)
+            bc_weights = torch.FloatTensor(bc_data_np["weights"]).to(device)
+            bc_data = {"obs": bc_obs, "actions": bc_actions, "weights": bc_weights}
+            print(f"Loaded BC data: {len(bc_actions)} timesteps for BC auxiliary loss (coef={args.bc_loss_coef})")
+        else:
+            print(f"BC dataset not found at {bc_data_path}")
+
     ppo = PPOUpdater(
         policy, lr=args.lr, clip=args.clip, entropy_coef=args.entropy_coef,
         ppo_epochs=args.ppo_epochs, batch_size=args.batch_size,
         bc_policy=bc_policy, kl_coef=args.kl_coef,
+        bc_data=bc_data, bc_coef=args.bc_loss_coef,
     )
 
     # -- Run BC baseline eval before any PPO updates --
@@ -427,26 +471,34 @@ def main():
         # Use self-play on coordination layouts (greedy partner gets 0 soups there)
         is_coord = coordination_maps and current_layout in coordination_maps
         if is_coord:
-            # FCP-lite: sample a past checkpoint as partner when available,
-            # falling back to identical-twin self-play before first eval.
-            fcp_partner = None
-            if checkpoint_buffer:
-                past_state = random.choice(checkpoint_buffer)
-                if partner_pool is None:
-                    partner_pool = GraphAttentionPPOPolicy(obs_dim, num_actions, hidden=hidden,
-                                                            layers=layers, topo_dim=topo_dim).to(device)
-                partner_pool.load_state_dict(past_state)
-                # Small weight perturbation breaks strategic convergence —
-                # one agent leans toward "go to pot", the other toward "go to onion"
-                with torch.no_grad():
-                    for param in partner_pool.parameters():
-                        param.data += torch.randn_like(param) * 0.02
-                partner_pool.eval()
-                fcp_partner = partner_pool
-            obs, acts, old_log_probs, advs, returns, vals, ep_rewards = collect_rollouts(
-                env, policy, args.rollout_len, device, partner_policy=None,
-                frozen_self_partner=fcp_partner,
-            )
+            if coord_partner is not None:
+                # Use coordination partner trained on user recordings —
+                # it already knows how to coordinate (pass items, take turns)
+                obs, acts, old_log_probs, advs, returns, vals, ep_rewards = collect_rollouts(
+                    env, policy, args.rollout_len, device, partner_policy=None,
+                    frozen_self_partner=coord_partner,
+                )
+            else:
+                # FCP-lite: sample a past checkpoint as partner when available,
+                # falling back to identical-twin self-play before first eval.
+                fcp_partner = None
+                if checkpoint_buffer:
+                    past_state = random.choice(checkpoint_buffer)
+                    if partner_pool is None:
+                        partner_pool = GraphAttentionPPOPolicy(obs_dim, num_actions, hidden=hidden,
+                                                                layers=layers, topo_dim=topo_dim).to(device)
+                    partner_pool.load_state_dict(past_state)
+                    # Small weight perturbation breaks strategic convergence —
+                    # one agent leans toward "go to pot", the other toward "go to onion"
+                    with torch.no_grad():
+                        for param in partner_pool.parameters():
+                            param.data += torch.randn_like(param) * 0.02
+                    partner_pool.eval()
+                    fcp_partner = partner_pool
+                obs, acts, old_log_probs, advs, returns, vals, ep_rewards = collect_rollouts(
+                    env, policy, args.rollout_len, device, partner_policy=None,
+                    frozen_self_partner=fcp_partner,
+                )
         else:
             partner = greedy_partners[chosen_idx] if args.partner_type == "greedy" else None
             obs, acts, old_log_probs, advs, returns, vals, ep_rewards = collect_rollouts(
