@@ -58,13 +58,13 @@ class PPOPolicy(nn.Module):
     def forward(self, obs: torch.Tensor):
         feat = self.feature(obs)
         logits = self.actor(feat)
-        value = self.critic(feat).squeeze(-1)
+        value = self.critic(feat.detach()).squeeze(-1)
         return logits, value
 
     def get_action(self, obs: torch.Tensor, deterministic: bool = False):
         feat = self.feature(obs)
         logits = self.actor(feat)
-        value = self.critic(feat).squeeze(-1)
+        value = self.critic(feat.detach()).squeeze(-1)
         if deterministic:
             action = logits.argmax(dim=-1)
             log_prob = None
@@ -77,7 +77,7 @@ class PPOPolicy(nn.Module):
     def evaluate(self, obs: torch.Tensor, actions: torch.Tensor):
         feat = self.feature(obs)
         logits = self.actor(feat)
-        value = self.critic(feat).squeeze(-1)
+        value = self.critic(feat.detach()).squeeze(-1)
         dist = torch.distributions.Categorical(logits=logits)
         log_prob = dist.log_prob(actions)
         entropy = dist.entropy()
@@ -209,13 +209,13 @@ class GraphAttentionPPOPolicy(nn.Module):
     def forward(self, obs: torch.Tensor):
         feat = self.feature(obs)
         logits = self.actor(feat)
-        value = self.critic(feat).squeeze(-1)
+        value = self.critic(feat.detach()).squeeze(-1)
         return logits, value
 
     def get_action(self, obs: torch.Tensor, deterministic: bool = False):
         feat = self.feature(obs)
         logits = self.actor(feat)
-        value = self.critic(feat).squeeze(-1)
+        value = self.critic(feat.detach()).squeeze(-1)
         if deterministic:
             action = logits.argmax(dim=-1)
             log_prob = None
@@ -228,7 +228,7 @@ class GraphAttentionPPOPolicy(nn.Module):
     def evaluate(self, obs: torch.Tensor, actions: torch.Tensor):
         feat = self.feature(obs)
         logits = self.actor(feat)
-        value = self.critic(feat).squeeze(-1)
+        value = self.critic(feat.detach()).squeeze(-1)
         dist = torch.distributions.Categorical(logits=logits)
         log_prob = dist.log_prob(actions)
         entropy = dist.entropy()

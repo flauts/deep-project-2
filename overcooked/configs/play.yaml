@@ -8,9 +8,7 @@ environment:
 policies:
   agent_0:
     type: builtin
-    name: greedy_full_task
-    ingredient: onion
-    avoid_teammate: true
+    name: random_motion
     random_action_prob: 0.0
     max_action_time_ms: 100
     invalid_action: stay

@@ -78,14 +78,11 @@ class PPOUpdater:
                 if self.bc_policy is not None:
                     with torch.no_grad():
                         bc_logits, _ = self.bc_policy.forward(b_obs)
-                    # Compute exact Reverse KL D_KL(pi_theta || pi_BC) where pi_BC is reference P and pi_theta is learned Q.
-                    # In PyTorch F.kl_div(input, target), input must be log(P) and target must be Q.
-                    # Reverse KL is mode-seeking and penalizes pi_theta for placing mass where pi_BC has low probability.
-                    kl_loss = nn.functional.kl_div(
-                        nn.functional.log_softmax(bc_logits, dim=-1),
-                        nn.functional.softmax(curr_logits, dim=-1),
-                        reduction="batchmean"
-                    )
+                    bc_log_probs = nn.functional.log_softmax(bc_logits, dim=-1)
+                    curr_log_probs = nn.functional.log_softmax(curr_logits, dim=-1)
+                    curr_probs = nn.functional.softmax(curr_logits, dim=-1)
+                    # Exact reverse KL: D_KL(pi_theta || pi_BC) = sum(pi_theta * (log_pi_theta - log_pi_bc))
+                    kl_loss = torch.sum(curr_probs * (curr_log_probs - bc_log_probs), dim=-1).mean()
 
                 loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy.mean() + self.kl_coef * kl_loss
 

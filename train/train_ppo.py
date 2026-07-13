@@ -27,7 +27,7 @@ from models import PPOPolicy, BCPolicy, GraphAttentionPPOPolicy
 from ppo import PPOUpdater
 from env import SelfPlayEnv, build_env_for_layout, load_dynamics_overrides
 from src.constants import overcooked_action_to_index
-from policies.basic_policies import GreedyFullTaskPolicy
+from policies.basic_policies import GreedyFullTaskPolicy, RandomMotionPolicy
 
 TRAIN_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = TRAIN_DIR.parent
@@ -212,6 +212,8 @@ def quick_eval(policy, envs, active_layout_names, partners, device, n_episodes=3
                 act0 = int(logits0.argmax(dim=-1).item())
                 # Agent 1: greedy partner or PPO self-play
                 if partner is not None:
+                    if hasattr(partner, "agent_index"):
+                        partner.agent_index = 1
                     partner_action, _ = partner.action(env.env.state)
                     act1 = overcooked_action_to_index(partner_action)
                 else:
@@ -245,6 +247,7 @@ def main():
     parser.add_argument("--ppo-epochs", type=int, default=4)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--entropy-coef", type=float, default=0.01)
+    parser.add_argument("--coordination-entropy-coef", type=float, default=0.05, help="Entropy coefficient used specifically on coordination bottleneck layouts")
     parser.add_argument("--kl-coef", type=float, default=0.5, help="KL divergence regularization coefficient against reference BC policy")
     parser.add_argument("--shaped-reward-scale", type=float, default=1.0)
     parser.add_argument("--layout-weights", type=str, default=None, help="Comma-separated layout sampling weights (e.g. '1,1,2,1,2,2') or 'uneven' preset")
@@ -258,6 +261,7 @@ def main():
     parser.add_argument("--eval-interval", type=int, default=10000, help="Steps between quick evals (0 to disable)")
     parser.add_argument("--early-stop-patience", type=int, default=3, help="Stop training after N consecutive evals below BC baseline")
     parser.add_argument("--coordination-layouts", type=str, default=None, help="Comma-separated layouts to use self-play (no greedy partner). On these layouts both PPO agents explore together.")
+    parser.add_argument("--solo-layouts", type=str, default=None, help="Comma-separated layouts where agent 1 is RandomMotionPolicy, forcing our agent to complete 100%% of the cooking solo.")
     parser.add_argument("--coordination-partner-model", type=str, default=None, help="Path to a BC model trained on user recordings. When set, coordination layouts use this as a frozen partner instead of FCP.")
     parser.add_argument("--bc-loss-coef", type=float, default=0.0, help="BC auxiliary loss coefficient. Adds supervised cross-entropy from consolidated dataset during PPO training (0=disabled).")
     args = parser.parse_args()
@@ -270,10 +274,12 @@ def main():
 
     dynamics_overrides = load_dynamics_overrides()
     layout_names = [l.strip() for l in args.layouts.split(",")]
-    coordination_maps = set()
-    if args.coordination_layouts:
-        coordination_maps = set(l.strip() for l in args.coordination_layouts.split(","))
-        print(f"Self-play on coordination layouts: {coordination_maps}")
+    coordination_maps = [l.strip() for l in args.coordination_layouts.split(",") if l.strip()] if args.coordination_layouts else []
+    solo_maps = [l.strip() for l in args.solo_layouts.split(",") if l.strip()] if args.solo_layouts else []
+    if coordination_maps:
+        print(f"Coordination self-play layouts ({len(coordination_maps)}): {coordination_maps}")
+    if solo_maps:
+        print(f"Solo cooking layouts against RandomMotionPolicy ({len(solo_maps)}): {solo_maps}")
     print(f"Training on layouts: {layout_names}")
 
     # Build environments
@@ -428,7 +434,9 @@ def main():
         print("\nRunning BC baseline eval...")
         eval_partners = []
         for name in active_layout_names:
-            if coordination_maps and name in coordination_maps:
+            if solo_maps and name in solo_maps:
+                eval_partners.append(RandomMotionPolicy())
+            elif coordination_maps and name in coordination_maps:
                 eval_partners.append(None)  # self-play eval
             elif args.partner_type == "greedy":
                 eval_partners.append(greedy_partners[active_layout_names.index(name)])
@@ -470,29 +478,29 @@ def main():
         current_layout = active_layout_names[chosen_idx]
         # Use self-play on coordination layouts (greedy partner gets 0 soups there)
         is_coord = coordination_maps and current_layout in coordination_maps
-        if is_coord:
-            if coord_partner is not None:
-                # Use coordination partner trained on user recordings —
+        is_solo = solo_maps and current_layout in solo_maps
+        if is_solo:
+            # Partner is RandomMotionPolicy — agent MUST do 100% of the cooking completely solo!
+            obs, acts, old_log_probs, advs, returns, vals, ep_rewards = collect_rollouts(
+                env, policy, args.rollout_len, device, partner_policy=RandomMotionPolicy(),
+            )
+        elif is_coord:
+            if coord_partner is not None and random.random() < 0.5:
+                # Use coordination partner trained on user recordings 50% of the time —
                 # it already knows how to coordinate (pass items, take turns)
                 obs, acts, old_log_probs, advs, returns, vals, ep_rewards = collect_rollouts(
                     env, policy, args.rollout_len, device, partner_policy=None,
                     frozen_self_partner=coord_partner,
                 )
             else:
-                # FCP-lite: sample a past checkpoint as partner when available,
-                # falling back to identical-twin self-play before first eval.
+                # FCP: sample a past checkpoint 50% of the remaining time; otherwise use live twin self-play
                 fcp_partner = None
-                if checkpoint_buffer:
+                if checkpoint_buffer and random.random() < 0.5:
                     past_state = random.choice(checkpoint_buffer)
                     if partner_pool is None:
                         partner_pool = GraphAttentionPPOPolicy(obs_dim, num_actions, hidden=hidden,
                                                                 layers=layers, topo_dim=topo_dim).to(device)
                     partner_pool.load_state_dict(past_state)
-                    # Small weight perturbation breaks strategic convergence —
-                    # one agent leans toward "go to pot", the other toward "go to onion"
-                    with torch.no_grad():
-                        for param in partner_pool.parameters():
-                            param.data += torch.randn_like(param) * 0.02
                     partner_pool.eval()
                     fcp_partner = partner_pool
                 obs, acts, old_log_probs, advs, returns, vals, ep_rewards = collect_rollouts(
@@ -504,6 +512,12 @@ def main():
             obs, acts, old_log_probs, advs, returns, vals, ep_rewards = collect_rollouts(
                 env, policy, args.rollout_len, device, partner_policy=partner,
             )
+
+        # Apply State-Dependent Dynamic Exploration (high on bottlenecks and solo maps, low on open maps)
+        if is_coord or is_solo:
+            ppo.entropy_coef = args.coordination_entropy_coef
+        else:
+            ppo.entropy_coef = args.entropy_coef
 
         stats = ppo.update(obs, acts, old_log_probs, advs, returns, vals)
 
@@ -528,7 +542,9 @@ def main():
             # Per-layout eval partners: self-play on coordination, greedy elsewhere
             eval_partners = []
             for name in active_layout_names:
-                if coordination_maps and name in coordination_maps:
+                if solo_maps and name in solo_maps:
+                    eval_partners.append(RandomMotionPolicy())
+                elif coordination_maps and name in coordination_maps:
                     eval_partners.append(None)  # self-play eval
                 elif args.partner_type == "greedy":
                     eval_partners.append(greedy_partners[active_layout_names.index(name)])
