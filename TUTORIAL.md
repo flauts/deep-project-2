@@ -1,11 +1,12 @@
-# Overcooked AI Training Project — Tutorial & Reference
+# Overcooked AI Training Project - Tutorial & Reference
 
 ## What this project does
 
 This project trains an AI agent to play Overcooked using **Behavioral Cloning (BC)** from
-human demonstration recordings, then fine-tunes it with **Proximal Policy Optimization (PPO)**
-via self-play. The trained agent plugs directly into the existing `overcooked/src/` game
-framework and can be evaluated against any layout.
+human demonstrations + **greedy-generated synthetic demos**, then fine-tunes it with
+**Proximal Policy Optimization (PPO)** against a greedy partner with self-play on
+coordination bottlenecks. The trained agent plugs directly into the existing
+`overcooked/src/` game framework and can be evaluated against any layout.
 
 ---
 
@@ -13,34 +14,35 @@ framework and can be evaluated against any layout.
 
 ```
 deep_project/
-├── overcooked/                    # Competition starter code (DO NOT modify src/)
-│   ├── src/                        # Game engine wrapper (runner, environment, eval, etc.)
-│   ├── policies/                   # Built-in policies + our trained_agent.py
-│   ├── configs/                    # YAML configs for the game (play, eval, collect demos)
-│   │   └── layouts/               # Original custom layouts (6 files)
-│   ├── layouts/                    # ← NEW: canonical home for ALL custom layouts (group-suffixed)
-│   │   └── dynamics_overrides.json # Per-layout old_dynamics flags
-│   ├── data/demonstrations/        # Bot-generated baseline demos (greedy_full_task)
-│   ├── <team_folders>/             # ~22 team folders, each with recordings/ (538 .npz total)
-│   ├── scripts/                    # Our consolidation + filter + reporting scripts
-│   └── ...
-├── train/                          # ← NEW: training pipeline
-│   ├── build_dataset.py            # Consolidate filtered recordings → single dataset
-│   ├── train_bc.py                 # Behavioral Cloning trainer
-│   ├── train_ppo.py                # PPO self-play fine-tuner
-│   ├── training/                   # PPO internals (env, models, ppo)
-│   ├── data/                       # Generated datasets + stats
-│   └── models/                     # Generated .pt checkpoints
-├── policies/trained_agent.py       # ← NEW: plug-in agent for the game
-├── configs/filter.yaml             # ← NEW: recording quality filter thresholds
-├── configs/eval/                    # ← NEW: per-layout evaluation configs
-├── scripts/consolidate_layouts.py # ← NEW: gather custom layouts from team folders
-├── scripts/filter_recordings.py    # ← NEW: quality-filter recordings
-├── scripts/official_score.py      # ← NEW: official competition score formula
-├── scripts/training_report.py     # ← NEW: consolidated stats + curves
-├── requirements.txt               # Python dependencies
-├── TUTORIAL.md                     # This file
-└── overcooked_compiled_colab.ipynb # Madrona self-play notebook (reference only)
+||| overcooked/                    # Competition starter code (DO NOT modify src/)
+|   ||| src/                        # Game engine wrapper (runner, environment, eval, etc.)
+|   ||| policies/                   # Built-in policies + our trained_agent.py
+|   ||| configs/                    # YAML configs for the game (play, eval, collect demos)
+|   |   ||| layouts/               # Original custom layouts (6 files)
+|   ||| layouts/                    # <- NEW: canonical home for ALL custom layouts (group-suffixed)
+|   |   ||| dynamics_overrides.json # Per-layout old_dynamics flags
+|   ||| data/demonstrations/        # Bot-generated baseline demos (greedy_full_task)
+|   ||| <team_folders>/             # ~22 team folders, each with recordings/ (538 .npz total)
+|   ||| scripts/                    # Our consolidation + filter + reporting scripts
+|   ||| ...
+||| train/                          # <- NEW: training pipeline
+|   ||| build_dataset.py            # Consolidate filtered recordings -> single dataset
+|   ||| generate_demos.py           # Generate greedy vs greedy synthetic demos
+|   ||| train_bc.py                 # Behavioral Cloning trainer
+|   ||| train_ppo.py                # PPO fine-tuner (greedy-partner-aware)
+|   ||| training/                   # PPO internals (env, models, ppo)
+|   ||| data/                       # Generated datasets + stats
+|   ||| models/                     # Generated .pt checkpoints
+||| policies/trained_agent.py       # <- NEW: plug-in agent for the game
+||| configs/filter.yaml             # <- NEW: recording quality filter thresholds
+||| configs/eval/                    # <- NEW: per-layout evaluation configs
+||| scripts/consolidate_layouts.py # <- NEW: gather custom layouts from team folders
+||| scripts/filter_recordings.py    # <- NEW: quality-filter recordings
+||| scripts/official_score.py      # <- NEW: official competition score formula
+||| scripts/training_report.py     # <- NEW: consolidated stats + curves
+||| requirements.txt               # Python dependencies
+||| TUTORIAL.md                     # This file
+||| overcooked_compiled_colab.ipynb # Madrona self-play notebook (reference only)
 ```
 
 ---
@@ -48,16 +50,16 @@ deep_project/
 ## The Recordings
 
 Each team folder contains recordings as triples:
-- `<name>.npz` — tensor dataset: `obs`, `actions`, `rewards`, `dones`, `next_obs`, `episode_ids`, etc.
-- `<name>.pkl` — full pickle with `metadata`, `records` (per-timestep dicts), `episode_summaries`.
-- `<name>.metadata.json` — full environment config, layout grid, policy config, observation type.
+- `<name>.npz` - tensor dataset: `obs`, `actions`, `rewards`, `dones`, `next_obs`, `episode_ids`, etc.
+- `<name>.pkl` - full pickle with `metadata`, `records` (per-timestep dicts), `episode_summaries`.
+- `<name>.metadata.json` - full environment config, layout grid, policy config, observation type.
 
 **Key facts:**
 - 538 total `.npz` recordings across ~22 team folders.
 - 515 are **human keyboard demos** (agent_1 = human, recorded at index 1).
-- 13 are **bot baselines** (greedy_full_task/random/stay — excluded from training).
+- 13 are **bot baselines** (greedy_full_task/random/stay - excluded from training).
 - Observations are **featurized** vectors (`env.featurize_state_mdp(state)[agent_index]`).
-- Actions are integers 0–5: `0=N, 1=S, 2=E, 3=W, 4=stay, 5=interact`.
+- Actions are integers 0-5: `0=N, 1=S, 2=E, 3=W, 4=stay, 5=interact`.
 - Rewards: +20.0 per soup delivered (sparse).
 
 ### Official Competition Score
@@ -135,6 +137,15 @@ This runs the template (stay) agent vs greedy_full_task. Should print JSON with 
 
 ## Full Training Pipeline
 
+### Step 0 (optional): Generate Greedy vs Greedy Demos
+```bat
+cd C:\Users\SEBASTIAN\Documents\deep_project
+python train\generate_demos.py --episodes 10
+```
+Generates synthetic greedy vs greedy gameplay on all 22 built-in layouts. Records BOTH
+agents' perspectives (`_a0`/`_a1`) for position-independent learning. Produces ~22 layouts
+x 10 episodes x 2 agents = 440 recordings in `overcooked/data/user_recordings/`.
+
 ### Step 1: Consolidate Custom Layouts
 ```bat
 cd C:\Users\SEBASTIAN\Documents\deep_project\overcooked
@@ -150,8 +161,9 @@ cd C:\Users\SEBASTIAN\Documents\deep_project\overcooked
 python scripts\filter_recordings.py --config ..\configs\filter.yaml
 ```
 Computes per-recording quality signals (score, deliveries, idle%, action entropy, recorded
-agent type). Excludes bot baselines, disengaged sessions, spam, and truncated episodes.
-Tags kept recordings as gold/silver/bronze by per-layout official score percentile.
+agent type). Excludes idle/spam/truncated episodes. Current config includes bot baselines
+(`greedy_full_task`) since `exclude_non_human: false`. Tags kept recordings as
+gold/silver/bronze with aggressive tier weights (gold=1.0, silver=0.1, bronze=0.01).
 Outputs `train/data/recording_quality.tsv` + `train/data/consolidated_filtered.npz`.
 
 ### Step 3: Build Training Dataset
@@ -164,29 +176,41 @@ Pads observations to max shape, attaches layout/tier/role metadata. Writes
 
 ### Step 4: Train with Behavioral Cloning
 ```bat
-cd C:\Users\SEBASTIAN\Documents\deep_project\overcooked
-python ..\train\train_bc.py --epochs 50 --batch-size 256 --lr 1e-3
+cd C:\Users\SEBASTIAN\Documents\deep_project
+python train\train_bc.py --arch gnn --epochs 50 --batch-size 256 --lr 1e-3 ^
+    --scheduler plateau --weight-decay 0 --stay-weight 1.0 ^
+    --output train\models\bc_agent_gnn.pt
 ```
-Trains an MLP actor (obs → 6 logits) with tier-weighted cross-entropy loss.
-Saves `train/models/bc_agent.pt`. This is your safety-net — after this, you have a
-playable trained agent.
+Trains a GNN (Relational Graph Attention) actor with tier-weighted cross-entropy loss.
+Observations are 121-dim (96 featurized + 25 topology features). The topology features
+are static per-layout (BFS distances, narrow passages, graph connectivity) and bypass
+attention - concatenated directly with the graph output so the actor head has direct
+layout context. Saves `train/models/bc_agent_gnn.pt`.
 
-### Step 5: Fine-tune with PPO Self-Play (Optional but recommended)
+### Step 5: Fine-tune with PPO (Partner-Aware)
 ```bat
-cd C:\Users\SEBASTIAN\Documents\deep_project\overcooked
-python ..\train\train_ppo.py --bc-model ..\train\models\bc_agent.pt --layouts cramped_room,asymmetric_advantages --timesteps 500000
+cd C:\Users\SEBASTIAN\Documents\deep_project
+python train\train_ppo.py --bc-model train\models\bc_agent_gnn.pt ^
+    --layouts counter_circuit,asymmetric_advantages,coordination_ring,cramped_room,simple_o,forced_coordination ^
+    --coordination-layouts counter_circuit,forced_coordination,cramped_room ^
+    --timesteps 200000 --kl-coef 0.3 --lr 5e-6 --entropy-coef 0.05 ^
+    --eval-interval 20000 --early-stop-patience 5 ^
+    --output train\models\ppo_agent.pt
 ```
-Fine-tunes the BC agent with PPO self-play on specified layouts. Saves
-`train/models/ppo_agent.pt`.
+Fine-tunes the BC agent with PPO against a **greedy partner** on open maps (provides +20
+sparse reward signal), switching to **self-play** on coordination bottlenecks where greedy
+gets 0 soups. KL anchoring against the frozen BC policy prevents catastrophic forgetting.
+Periodic eval every 20k steps with early stopping. Saves `ppo_agent_best.pt` (best eval
+score) alongside `ppo_agent.pt`.
 
 ### Step 6: Evaluate the Trained Agent
 ```bat
 cd C:\Users\SEBASTIAN\Documents\deep_project\overcooked
-:: Evaluate on a specific layout
-python -m src.evaluate --config configs\eval\cramped_room.yaml
+:: Evaluate on a specific layout (model_path must match your best checkpoint)
+python -m src.evaluate --config configs\eval\counter_circuit.yaml
 
-:: Or evaluate on all layouts
-for %f in (configs\eval\*.yaml) do python -m src.evaluate --config %f
+:: Or evaluate on all benchmark layouts
+for %f in (configs\eval\cramped_room.yaml configs\eval\asymmetric_advantages.yaml configs\eval\coordination_ring.yaml configs\eval\simple_o.yaml configs\eval\forced_coordination.yaml configs\eval\counter_circuit.yaml) do python -m src.evaluate --config %f
 ```
 
 ### Step 7: Generate Training Report
@@ -201,21 +225,29 @@ python scripts\training_report.py
 
 `policies/trained_agent.py` defines a `TrainedAgent` class with the same interface as
 `policies/template.py`:
-- `__init__(self, config)` — loads the `.pt` model
-- `reset(self)` — resets any state
-- `act(self, obs)` — returns action index 0–5
+- `__init__(self, config)` - loads the `.pt` model and computes topology features
+- `reset(self)` - resets any state
+- `act(self, obs)` - returns action index 0-5 (appends topology features to obs)
 
 It's loaded by the existing `src/policy_loader.py` WITHOUT changes to `src/`:
 ```yaml
-# In any eval config:
+# In any eval config (REQUIRED for topology models):
 agent_0:
   type: python_class
   path: policies/trained_agent.py
   class_name: TrainedAgent
   config:
-    model_path: ../train/models/bc_agent.pt
+    model_path: ../train/models/ppo_agent_best.pt
+    layout_name: counter_circuit    # <- REQUIRED for topology feature computation
     deterministic: true
 ```
+
+Important notes:
+- `layout_name` is required in agent config for models with `topo_dim > 0`. Without it,
+  topology features default to zeros and the model may not work.
+- Use `type: python_class` with `TrainedAgent`. **Do NOT use `type: trained_ppo`** -
+  `PPODirectAgent` does NOT append topology features to observations.
+- The best checkpoint is `ppo_agent_best.pt` (saved by early stopping), not `ppo_agent.pt`.
 
 ---
 
@@ -225,7 +257,7 @@ agent_0:
 Available inside `overcooked_ai_py` (no file needed):
 `cramped_room`, `asymmetric_advantages`, `coordination_ring`, `counter_circuit`,
 `forced_coordination`, `large_room`, `simple_o`, `simple_tomato`, `small_corridor`,
-`soup_coordination`, `tutorial_0`–`tutorial_3`, and more (45 total).
+`soup_coordination`, `tutorial_0`-`tutorial_3`, and more (45 total).
 
 ### Custom layouts
 Stored in `overcooked/layouts/` with group-suffixed names. The game loads them via the
@@ -249,20 +281,20 @@ recipes, custom recipe_values/times, or multi-order start_all_orders need
 Not all recordings are good demonstrations. The filter (`scripts/filter_recordings.py`)
 excludes:
 
-1. **Bot baselines** — recordings where the recorded agent is `greedy_full_task`,
-   `random_motion`, `stay`, or `random` (not human_keyboard).
-2. **Disengaged sessions** — score == 0 AND idle >= 70% (player did nothing).
-3. **Single-action spam** — action entropy < 0.3 (likely stayed or held one key).
-4. **Truncated episodes** — length < 100 timesteps (player quit early).
+1. **Disengaged sessions** - score == 0 AND idle >= 70% (player did nothing).
+2. **Single-action spam** - action entropy < 0.3 (likely stayed or held one key).
+3. **Truncated episodes** - length < 100 timesteps (player quit early).
+
+Note: Bot baselines (`greedy_full_task`) are **NOT excluded** when `exclude_non_human: false`
+(current config). This allows synthetic demos from `generate_demos.py` to flow into training.
 
 Kept recordings are tiered by per-layout official score:
-- **gold**: top 25% or >= 4 soups
-- **silver**: >= median or >= 2 soups
-- **bronze**: everything else kept
+- **gold**: top 25% or >= 4 soups (weight 1.0)
+- **silver**: >= median or >= 2 soups (weight 0.1)
+- **bronze**: everything else kept (weight 0.01)
 
-BC loss is weighted by tier: gold=1.0, silver=0.6, bronze=0.25.
-
-All thresholds are tunable in `configs/filter.yaml`.
+Silver and bronze weights are deliberately low to downweight low-quality team demos
+while still providing state diversity. All thresholds are tunable in `configs/filter.yaml`.
 
 ---
 
@@ -285,4 +317,12 @@ All thresholds are tunable in `configs/filter.yaml`.
 **`torch.cuda.is_available()` returns False**: Install torch with CUDA wheels
 (`--index-url https://download.pytorch.org/whl/cu124`).
 **Layout not found**: Ensure it's in `overcooked/layouts/` and referenced via `layout_file:`.
-**Observation shape mismatch**: The dataset pads to max shape; the trained agent handles padding.
+**`type: trained_ppo` silently ignores topology features**: If your model was trained with
+`topo_dim=25` (121-dim obs), `PPODirectAgent` does NOT append topology features during
+inference. Always use `type: python_class` with `policies/trained_agent.py:TrainedAgent`
+and include `layout_name` in the agent config for topology models.
+**Observation shape mismatch (96 vs 121)**: The dataset appends 25-dim topology features
+to observations (96->121). Ensure your model architecture (`models.py`) has `topo_dim=25`
+and your inference code (`trained_agent.py`) computes topology features from `layout_name`.
+**Eval config missing `layout_name`**: If your eval configs don't include `layout_name`
+in agent_0's config, topology features default to zeros. The model may not work correctly.

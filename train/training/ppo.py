@@ -9,8 +9,11 @@ import numpy as np
 
 class PPOUpdater:
     def __init__(self, policy, lr=3e-4, clip=0.2, entropy_coef=0.01,
-                 value_coef=0.5, max_grad_norm=0.5, ppo_epochs=4, batch_size=64):
+                 value_coef=0.5, max_grad_norm=0.5, ppo_epochs=4, batch_size=64,
+                 bc_policy=None, kl_coef=0.05):
         self.policy = policy
+        self.bc_policy = bc_policy
+        self.kl_coef = kl_coef
         self.optimizer = torch.optim.Adam(policy.parameters(), lr=lr)
         self.clip = clip
         self.entropy_coef = entropy_coef
@@ -45,6 +48,7 @@ class PPOUpdater:
         total_policy_loss = 0.0
         total_value_loss = 0.0
         total_entropy = 0.0
+        total_kl = 0.0
 
         for _ in range(self.ppo_epochs):
             np.random.shuffle(idx)
@@ -57,7 +61,7 @@ class PPOUpdater:
                 b_returns = returns[batch_idx]
                 b_old_values = old_values[batch_idx]
 
-                log_probs, entropy, new_values = self.policy.evaluate(b_obs, b_actions)
+                log_probs, entropy, new_values, curr_logits = self.policy.evaluate(b_obs, b_actions)
 
                 ratio = torch.exp(log_probs - b_old_log_probs)
                 surr1 = ratio * b_advantages
@@ -66,7 +70,20 @@ class PPOUpdater:
 
                 value_loss = nn.functional.mse_loss(new_values, b_returns)
 
-                loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy.mean()
+                kl_loss = 0.0
+                if self.bc_policy is not None:
+                    with torch.no_grad():
+                        bc_logits, _ = self.bc_policy.forward(b_obs)
+                    # Compute exact Reverse KL D_KL(pi_theta || pi_BC) where pi_BC is reference P and pi_theta is learned Q.
+                    # In PyTorch F.kl_div(input, target), input must be log(P) and target must be Q.
+                    # Reverse KL is mode-seeking and penalizes pi_theta for placing mass where pi_BC has low probability.
+                    kl_loss = nn.functional.kl_div(
+                        nn.functional.log_softmax(bc_logits, dim=-1),
+                        nn.functional.softmax(curr_logits, dim=-1),
+                        reduction="batchmean"
+                    )
+
+                loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy.mean() + self.kl_coef * kl_loss
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -77,6 +94,8 @@ class PPOUpdater:
                 total_policy_loss += policy_loss.item()
                 total_value_loss += value_loss.item()
                 total_entropy += entropy.mean().item()
+                if isinstance(kl_loss, torch.Tensor):
+                    total_kl += kl_loss.item()
 
         n_updates = self.ppo_epochs * (n // self.batch_size + 1)
         return {

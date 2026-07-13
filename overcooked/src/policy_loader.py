@@ -12,6 +12,7 @@ from overcooked_ai_py.agents.agent import GreedyHumanModel, RandomAgent, StayAge
 
 from policies.basic_policies import GreedyFullTaskPolicy, RandomMotionPolicy, StayPolicy
 from policies.human_keyboard_policy import HumanKeyboardPolicy
+from policies.trained_agent import PPODirectAgent
 
 from src.observations import ObservationBuilder
 from src.policy_wrappers import StudentAgentAdapter, wrap_agent
@@ -80,6 +81,31 @@ def build_policy(policy_config: dict[str, Any], env, obs_builder: ObservationBui
         if "name" not in policy_config:
             raise PolicyLoadError("Builtin policy requires field 'name'")
         base_agent = build_builtin_agent(policy_config["name"], env, policy_config=policy_config)
+    elif policy_type == "trained_ppo":
+        # PPO agent using featurize_state_mdp directly (same pipeline as training)
+        from overcooked_ai_py.agents.agent import Agent as _Agent
+        student = PPODirectAgent(config=policy_config.get("config", policy_config))
+
+        class _PPOAgentWrapper(_Agent):
+            """Thin Agent subclass that routes action() through PPODirectAgent."""
+            def __init__(self, ppo_student):
+                super().__init__()
+                self._s = ppo_student
+
+            def set_mdp(self, mdp):
+                super().set_mdp(mdp)
+                self._s._mdp = mdp
+
+            def action(self, state):
+                act_idx = self._s.get_action_from_state(state, self.agent_index)
+                from overcooked_ai_py.mdp.actions import Action
+                return Action.ALL_ACTIONS[act_idx], {}
+
+            def reset(self):
+                super().reset()
+                self._s.reset()
+
+        base_agent = _PPOAgentWrapper(student)
     elif policy_type == "python_class":
         if "path" not in policy_config:
             raise PolicyLoadError("python_class policy requires field 'path'")

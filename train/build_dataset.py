@@ -17,11 +17,17 @@ from pathlib import Path
 from collections import defaultdict
 
 import numpy as np
+import sys
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPT_DIR / "data"
 PROJECT_ROOT = SCRIPT_DIR.parent
 OVERCOOKED_DIR = PROJECT_ROOT / "overcooked"
+TRAINING_DIR = SCRIPT_DIR / "training"
+
+sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(OVERCOOKED_DIR))
+sys.path.insert(0, str(TRAINING_DIR))
 
 
 def main():
@@ -50,6 +56,36 @@ def main():
 
     print(f"  Raw obs shape: {obs.shape}")
     print(f"  Total timesteps: {len(actions)}")
+
+    # ── Oversample gold-tier samples for benchmark maps ──
+    # Keep ALL tiers (aggressive tier weighting handles quality).
+    # Only oversample gold-tier samples to avoid amplifying bad demos.
+    OVERSAMPLE_FACTOR = 1  # No oversampling — greedy demos cover all layouts now
+    CC_OVERSAMPLE = 1
+    BENCHMARK_MAPS = ["cramped_room", "asymmetric_advantages", "coordination_ring",
+                      "simple_o", "forced_coordination", "counter_circuit"]
+    next_obs = None
+
+    for map_name in BENCHMARK_MAPS:
+        map_gold_mask = (layouts == map_name) & (tiers == 0)
+        gold_indices = np.where(map_gold_mask)[0]
+        n_gold = int(map_gold_mask.sum())
+        factor = CC_OVERSAMPLE if map_name == "counter_circuit" else OVERSAMPLE_FACTOR
+        n_extra = n_gold * (factor - 1)
+        print(f"  {map_name}: {n_gold} gold timesteps, oversampling {factor}x (+{n_extra})")
+        if n_gold > 0:
+            gold_repeat = np.tile(gold_indices, factor - 1)
+            obs = np.concatenate([obs, obs[gold_repeat]])
+            actions = np.concatenate([actions, actions[gold_repeat]])
+            rewards = np.concatenate([rewards, rewards[gold_repeat]])
+            dones = np.concatenate([dones, dones[gold_repeat]])
+            weights = np.concatenate([weights, weights[gold_repeat]])
+            tiers = np.concatenate([tiers, tiers[gold_repeat]])
+            layouts = np.concatenate([layouts, layouts[gold_repeat]])
+            role_swaps = np.concatenate([role_swaps, role_swaps[gold_repeat]])
+            episode_ids = np.concatenate([episode_ids, episode_ids[gold_repeat]])
+            timesteps = np.concatenate([timesteps, timesteps[gold_repeat]])
+    print(f"  Total after oversample: {len(actions)} timesteps")
 
     # Determine max obs shape across all records
     max_dim2 = obs.shape[1] if obs.ndim >= 2 else 1
@@ -87,6 +123,32 @@ def main():
     layout_to_idx = {name: i for i, name in enumerate(layout_names)}
 
     layout_indices = np.array([layout_to_idx[str(l)] for l in layouts], dtype=np.int64)
+
+    # ── Append layout topology features ──
+    from env import compute_topology_for_layout, load_dynamics_overrides
+    dynamics_overrides = load_dynamics_overrides()
+    layouts_dir = OVERCOOKED_DIR / "layouts"
+    topo_feat_map = {}
+    topo_dim = 0
+    for lname in layout_names:
+        try:
+            feats = compute_topology_for_layout(lname, layouts_dir, dynamics_overrides)
+            topo_feat_map[lname] = feats
+            if topo_dim == 0:
+                topo_dim = len(feats)
+        except Exception as e:
+            print(f"  WARNING: Cannot compute topo features for '{lname}': {e}. Using zeros.")
+    if topo_dim == 0:
+        topo_dim = 25
+    topo_default = np.zeros(topo_dim, dtype=np.float32)
+    topo_arr = np.array([topo_feat_map.get(str(l), topo_default) for l in layouts], dtype=np.float32)
+    padded_obs = np.concatenate([padded_obs.astype(np.float32), topo_arr], axis=1)
+    if padded_next is not None and padded_next.shape[0] == topo_arr.shape[0]:
+        padded_next = np.concatenate([padded_next.astype(np.float32), topo_arr], axis=1)
+    elif padded_next is not None:
+        print(f"  WARNING: next_obs size ({padded_next.shape[0]}) differs from topo features ({topo_arr.shape[0]}). Dropping next_obs.")
+        padded_next = None
+    print(f"  Added topology features: {topo_dim} dims, obs shape now {padded_obs.shape}")
 
     # Save consolidated dataset
     save_dict = {

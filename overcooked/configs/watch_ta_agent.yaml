@@ -1,0 +1,62 @@
+# ============================================================
+#  watch_ta_agent.yaml  -  Watch the trained TA agent play
+# ============================================================
+#
+#  Usage (run from the overcooked/ directory):
+#    python -m src.collect_demonstrations --config configs/watch_ta_agent.yaml
+#
+#  OR from project root:
+#    python watch_agent.py --config overcooked/configs/watch_ta_agent.yaml
+#
+#  SCENARIO QUICK REFERENCE
+#  ─────────────────────────────────────────────────────────────────────────
+#  Scenario 1 — Asymmetric Advantages (pure greedy partner)
+#    layout_name: asymmetric_advantages
+#    agent_0: trained_ppo   <-- PPO agent plays as Player 0 (onion side)
+#    agent_1: greedy_full_task
+#
+#  Scenario 2 — Coordination Ring (sticky 15% partner)
+#    layout_name: coordination_ring
+#    agent_0: trained_ppo
+#    agent_1: greedy_full_task  +  sticky: 0.15
+#
+#  Scenario 3 — Counter Circuit (sticky 10% + random 10% partner)
+#    layout_name: counter_circuit
+#    agent_0: trained_ppo
+#    agent_1: greedy_full_task  +  sticky: 0.10  +  random_action_prob: 0.10
+#
+#  Swap agent_0 / agent_1 to change which side each agent spawns on.
+# ============================================================
+
+environment:
+  layout_name: asymmetric_advantages  # change to: coordination_ring | counter_circuit
+  horizon: 400
+
+policies:
+  agent_0:
+    type: trained_ppo
+    config:
+      model_path: train/models/ppo_agent_ta_finetuned.pt
+      deterministic: true     # true = argmax (consistent), false = stochastic
+      device: cpu             # cpu | cuda
+
+  agent_1:
+    type: builtin
+    name: greedy_full_task
+    ingredient: onion
+    avoid_teammate: true
+    # For Scenario 2 — uncomment:
+    # sticky_prob: 0.15
+    # For Scenario 3 — uncomment:
+    # sticky_prob: 0.10
+    # random_action_prob: 0.10
+
+execution:
+  num_episodes: 3
+  swap_agent_positions: false   # set true to also run with sides swapped
+
+rendering:
+  mode: window        # live pygame window
+  fps: 5              # steps per second  (1 = slow-mo | 5 = normal | 10 = fast)
+  save_gif: false     # set true to export a GIF
+  gif_path: outputs/watch_replay.gif

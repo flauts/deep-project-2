@@ -51,8 +51,10 @@ train/data/*.json
 !train/data/dataset_stats.json
 
 train/models/*.pt
-train/models/*.history.json
+train/models/*.json
+train/models/*.md
 train/train/models/
+potential_fn_src.txt
 
 outputs/
 overcooked/outputs/

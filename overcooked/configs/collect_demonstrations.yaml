@@ -1,11 +1,17 @@
 environment:
-  layout_name: forced_coordination   # or forced_coordination, simple_o, etc.
-  layout_file: null
+  layout_name: simple_o  # Use for built-in maps: asymmetric_advantages, forced_coordination, simple_o, cramped_room, coordination_ring, counter_circuit
+  layout_file: null      # Use for custom maps: e.g. layouts/salon_amplio_diealis_pegalon_army.layout (and set layout_name: null)
   horizon: 400
 policies:
   agent_0:
     type: builtin
-    name: greedy_full_task       # or bc_agent, or a second human_keyboard!
+    name: greedy_full_task           # AI partner that helps deliver dishes
   agent_1:
     type: builtin
-    name: human_keyboard         # YOU play this agent via Keyboard
+    name: human_keyboard             # YOU play as Agent 1 via Keyboard (Arrows + Space to interact)
+data_collection:
+  enabled: true
+  output_dir: data/user_recordings   # Automatically saves your recorded .npz files here!
+  record_agent_indices: [1]          # Records your human gameplay exactly
+  include_next_obs: true
+  save_npz: true

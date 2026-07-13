@@ -1,0 +1,24 @@
+environment:
+  layout_name: counter_circuit  # Use for built-in maps: asymmetric_advantages, forced_coordination, simple_o, cramped_room, coordination_ring, counter_circuit
+  horizon: 400
+policies:
+  agent_1:
+    type: python_class
+    path: overcooked/policies/trained_agent.py
+    class_name: TrainedAgent
+    config:
+      model_path: train/models/ppo_agent_best.pt
+      deterministic: true
+      layout_name: counter_circuit
+  agent_0:
+    type: builtin
+    name: greedy_full_task
+    ingredient: onion
+    avoid_teammate: true
+execution:
+  num_episodes: 3
+  swap_agent_positions: false
+rendering:
+  mode: window
+  fps: 5
+  save_gif: false

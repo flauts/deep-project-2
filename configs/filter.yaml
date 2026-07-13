@@ -5,7 +5,7 @@
 
 # Drop recordings where the recorded agent is NOT human_keyboard.
 # This excludes bot baselines (greedy_full_task, random_motion, stay, random).
-exclude_non_human: true
+exclude_non_human: false
 
 # Drop recordings with score == 0 AND idle percentage >= this threshold.
 # Catches players who disengaged / quit / did nothing.
@@ -31,9 +31,9 @@ tier:
   silver:
     min_percentile: 50
     min_soups: 2
-    weight: 0.6
+    weight: 0.1
   bronze:
-    weight: 0.25
+    weight: 0.01
 
 # --- Layout eligibility gate ---
 
