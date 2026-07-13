@@ -320,6 +320,8 @@ class SelfPlayEnv:
             for c in range(len(self.mdp.terrain_mtx[0]))
             if self.mdp.terrain_mtx[r][c] == "X"
         ]
+        onion_locs = list(self.mdp.get_onion_dispenser_locations())
+        dish_locs = list(self.mdp.get_dish_dispenser_locations())
 
         gamma = 0.99
         for i in range(2):
@@ -389,6 +391,36 @@ class SelfPlayEnv:
                         elif min_d >= 999:
                             min_d = 0
                         phi -= 0.2 * min_d
+                        dist_out = min_d
+                else:
+                    # Empty-hand navigation guidance covering all 3 cases:
+                    # 1. If any pot is cooking/ready and dishes exist -> guide towards dish dispenser (-0.1 * distance)
+                    # 2. If pots need onions -> guide towards onion dispenser (-0.1 * distance)
+                    # 3. If all pots empty / idling -> guide towards onion dispenser (-0.1 * distance) to start next cycle
+                    ready_cooking_pots = pot_st.get("ready", []) + pot_st.get("cooking", [])
+                    if ready_cooking_pots and dish_locs:
+                        min_d = min(self.get_distance(p.position, (dx, dy)) for dx, dy in dish_locs)
+                        if min_d >= 999 and counter_locs:
+                            other_p = s_obj.players[1] if p == s_obj.players[0] else s_obj.players[0]
+                            reach_counters = [c for c in counter_locs if self.get_distance(p.position, c) < 999 and self.get_distance(other_p.position, c) < 999]
+                            if not reach_counters:
+                                reach_counters = [c for c in counter_locs if self.get_distance(p.position, c) < 999]
+                            min_d = min(self.get_distance(p.position, c) for c in reach_counters) if reach_counters else 0
+                        elif min_d >= 999:
+                            min_d = 0
+                        phi -= 0.1 * min_d
+                        dist_out = min_d
+                    elif onion_locs:
+                        min_d = min(self.get_distance(p.position, (ox, oy)) for ox, oy in onion_locs)
+                        if min_d >= 999 and counter_locs:
+                            other_p = s_obj.players[1] if p == s_obj.players[0] else s_obj.players[0]
+                            reach_counters = [c for c in counter_locs if self.get_distance(p.position, c) < 999 and self.get_distance(other_p.position, c) < 999]
+                            if not reach_counters:
+                                reach_counters = [c for c in counter_locs if self.get_distance(p.position, c) < 999]
+                            min_d = min(self.get_distance(p.position, c) for c in reach_counters) if reach_counters else 0
+                        elif min_d >= 999:
+                            min_d = 0
+                        phi -= 0.1 * min_d
                         dist_out = min_d
 
                 return phi, dist_out

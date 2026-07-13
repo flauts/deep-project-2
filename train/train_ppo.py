@@ -192,7 +192,7 @@ def collect_rollouts(env, policy, n_steps, device, partner_policy=None,
     return obs_buf, act_buf, log_prob_buf, adv_buf, ret_buf, val_buf, ep_rewards
 
 
-def quick_eval(policy, envs, active_layout_names, partners, device, n_episodes=3):
+def quick_eval(policy, envs, active_layout_names, partners, device, n_episodes=5):
     """Run quick eval: argmax + partner, n_episodes per layout.
     partners can be GreedyFullTaskPolicy objects (greedy mode) or None (self-play mode).
     Returns {layout: mean_sparse_reward}."""
@@ -246,9 +246,9 @@ def main():
     parser.add_argument("--clip", type=float, default=0.2)
     parser.add_argument("--ppo-epochs", type=int, default=4)
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--entropy-coef", type=float, default=0.01)
+    parser.add_argument("--entropy-coef", type=float, default=0.02)
     parser.add_argument("--coordination-entropy-coef", type=float, default=0.05, help="Entropy coefficient used specifically on coordination bottleneck layouts")
-    parser.add_argument("--kl-coef", type=float, default=0.5, help="KL divergence regularization coefficient against reference BC policy")
+    parser.add_argument("--kl-coef", type=float, default=0.1, help="KL divergence regularization coefficient against reference BC policy")
     parser.add_argument("--shaped-reward-scale", type=float, default=1.0)
     parser.add_argument("--layout-weights", type=str, default=None, help="Comma-separated layout sampling weights (e.g. '1,1,2,1,2,2') or 'uneven' preset")
     parser.add_argument("--save-interval", type=int, default=10000)
@@ -259,6 +259,7 @@ def main():
     parser.add_argument("--topo-dim", type=int, default=0, help="Topology feature dimension (0=disabled, auto-detected from env/BC checkpoint if obs > 96)")
     parser.add_argument("--partner-type", type=str, default="greedy", choices=["self_play", "greedy"], help="Partner for agent 1: self_play (same PPO policy) or greedy (GreedyFullTaskPolicy)")
     parser.add_argument("--eval-interval", type=int, default=10000, help="Steps between quick evals (0 to disable)")
+    parser.add_argument("--eval-episodes", type=int, default=5, help="Number of evaluation episodes per layout during quick_eval")
     parser.add_argument("--early-stop-patience", type=int, default=3, help="Stop training after N consecutive evals below BC baseline")
     parser.add_argument("--coordination-layouts", type=str, default=None, help="Comma-separated layouts to use self-play (no greedy partner). On these layouts both PPO agents explore together.")
     parser.add_argument("--solo-layouts", type=str, default=None, help="Comma-separated layouts where agent 1 is RandomMotionPolicy, forcing our agent to complete 100%% of the cooking solo.")
@@ -442,7 +443,7 @@ def main():
                 eval_partners.append(greedy_partners[active_layout_names.index(name)])
             else:
                 eval_partners.append(None)
-        bc_results = quick_eval(policy, envs, active_layout_names, eval_partners, device)
+        bc_results = quick_eval(policy, envs, active_layout_names, eval_partners, device, n_episodes=args.eval_episodes)
         avg_sparse = np.mean(list(bc_results.values()))
         print(f"BC baseline: { {k: f'{v/20:.1f} soups' for k, v in bc_results.items()} }")
         bc_baseline = avg_sparse
@@ -550,7 +551,7 @@ def main():
                     eval_partners.append(greedy_partners[active_layout_names.index(name)])
                 else:
                     eval_partners.append(None)
-            eval_results = quick_eval(policy, envs, active_layout_names, eval_partners, device)
+            eval_results = quick_eval(policy, envs, active_layout_names, eval_partners, device, n_episodes=args.eval_episodes)
             avg_sparse = np.mean(list(eval_results.values()))
             avg_soups = avg_sparse / 20.0
             print(f"  eval avg sparse: {avg_sparse:.1f} ({avg_soups:.1f} soups)")
