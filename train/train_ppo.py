@@ -437,8 +437,6 @@ def main():
         for name in active_layout_names:
             if solo_maps and name in solo_maps:
                 eval_partners.append(RandomMotionPolicy())
-            elif coordination_maps and name in coordination_maps:
-                eval_partners.append(None)  # self-play eval
             elif args.partner_type == "greedy":
                 eval_partners.append(greedy_partners[active_layout_names.index(name)])
             else:
@@ -540,13 +538,11 @@ def main():
         # Periodic evaluation + early stopping checkpoint
         if args.eval_interval > 0 and total_steps % args.eval_interval < args.rollout_len:
             print(f"\n--- Eval at step {total_steps} ---")
-            # Per-layout eval partners: self-play on coordination, greedy elsewhere
+            # Per-layout eval partners: RandomMotionPolicy on solo maps, GreedyFullTaskPolicy elsewhere
             eval_partners = []
             for name in active_layout_names:
                 if solo_maps and name in solo_maps:
                     eval_partners.append(RandomMotionPolicy())
-                elif coordination_maps and name in coordination_maps:
-                    eval_partners.append(None)  # self-play eval
                 elif args.partner_type == "greedy":
                     eval_partners.append(greedy_partners[active_layout_names.index(name)])
                 else:

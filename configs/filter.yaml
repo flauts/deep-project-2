@@ -19,13 +19,18 @@ min_entropy: 0.3
 # Catches truncated / quit-early episodes.
 min_length: 100
 
+# Drop recordings with zero soups delivered.
+# These are episodes where agents deadlocked or accomplished nothing.
+# Using >= 1 soup ensures BC only learns from productive trajectories.
+min_soups_for_keep: 1
+
 # --- Tier classification (for BC loss weighting) ---
 
 # Tiers are assigned per-layout based on official score percentile.
 # official_score = 10000 * num_soups + 10 * (horizon - last_soup) + (horizon - first_soup)
 tier:
   gold:
-    min_percentile: 75
+    min_percentile: 90
     min_soups: 4
     weight: 1.0
   silver:

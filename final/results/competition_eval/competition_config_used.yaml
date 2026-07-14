@@ -1,0 +1,25 @@
+output_dir: results/competition_eval
+soup_reward: 20
+submissions:
+- name: Flauta's Company
+  path: policies/template.py
+  class_name: StudentAgent
+scenarios:
+- id: 3
+  name: escenario_3
+  enabled: true
+  layout_name: counter_circuit
+  layout_file: null
+  horizon: 400
+  seeds:
+  - 67
+  - 607
+  - 6007
+  - 60007
+  swap_roles: false
+  max_action_time_ms: 100
+  teammate:
+    type: builtin
+    name: greedy_full_task
+    random_action_prob: 0.05
+    sticky_action_prob: 0.15

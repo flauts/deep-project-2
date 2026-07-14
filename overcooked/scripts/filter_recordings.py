@@ -166,6 +166,7 @@ def main():
     min_idle_zero = config.get("min_idle_excluded_if_zero_score", 70.0)
     min_entropy = config.get("min_entropy", 0.3)
     min_length = config.get("min_length", 100)
+    min_soups_for_keep = config.get("min_soups_for_keep", 0)
     min_recordings_for_eval = config.get("min_recordings_for_eval", 3)
 
     npz_files = find_recordings(recordings_root)
@@ -175,6 +176,7 @@ def main():
     print(f"  min_idle_if_zero_score: {min_idle_zero}%")
     print(f"  min_entropy: {min_entropy}")
     print(f"  min_length: {min_length}")
+    print(f"  min_soups_for_keep: {min_soups_for_keep}")
     print()
 
     all_records = []
@@ -249,6 +251,9 @@ def main():
         elif length < min_length:
             record["keep"] = False
             record["reason"] = f"truncated (len={length})"
+        elif min_soups_for_keep > 0 and record["num_soups"] < min_soups_for_keep:
+            record["keep"] = False
+            record["reason"] = f"zero_soups ({record['num_soups']} soups)"
         else:
             record["reason"] = "kept"
 

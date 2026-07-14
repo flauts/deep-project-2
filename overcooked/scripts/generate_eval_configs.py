@@ -86,6 +86,7 @@ def generate_config(layout_name: str, layout_file: str | None, old_dynamics: boo
                 "config": {
                     "model_path": model_path,
                     "deterministic": True,
+                    "layout_name": layout_name,
                 },
                 "random_action_prob": 0.0,
                 "max_action_time_ms": 100,

@@ -1,0 +1,104 @@
+output_dir: results/competition_eval
+soup_reward: 20
+
+submissions:
+  - name: "Flauta's Company"
+    path: policies/template.py
+    class_name: StudentAgent
+
+scenarios:
+  - id: 1
+    name: escenario_1
+    enabled: true
+    layout_name: asymmetric_advantages
+    layout_file: null
+    horizon: 400
+    seeds: [67, 607, 6007, 60007]
+    swap_roles: false
+    max_action_time_ms: 100
+    teammate:
+      type: builtin
+      name: greedy_full_task
+      random_action_prob: 0.0
+      sticky_action_prob: 0.0
+
+  - id: 2
+    name: escenario_2
+    enabled: true
+    layout_name: coordination_ring
+    layout_file: null
+    horizon: 400
+    seeds: [67, 607, 6007, 60007]
+    swap_roles: false
+    max_action_time_ms: 100
+    teammate:
+      type: builtin
+      name: greedy_full_task
+      random_action_prob: 0.0
+      sticky_action_prob: 0.10
+
+  - id: 3
+    name: escenario_3
+    enabled: true
+    layout_name: counter_circuit
+    layout_file: null
+    horizon: 400
+    seeds: [67, 607, 6007, 60007]
+    swap_roles: false
+    max_action_time_ms: 100
+    teammate:
+      type: builtin
+      name: greedy_full_task
+      random_action_prob: 0.05
+      sticky_action_prob: 0.15
+
+  - id: 4
+    name: escenario_4
+    enabled: true
+    layout_name: null
+    layout_file: configs/layouts/scenario_4.layout
+    horizon: 400
+    seeds: [67, 607, 6007, 60007]
+    swap_roles: true
+    max_action_time_ms: 100
+    teammate:
+      type: builtin
+      name: random_motion
+      random_action_prob: 0.05
+      sticky_action_prob: 0.05
+
+  - id: 5
+    name: escenario_5
+    enabled: false
+    layout_name: null
+    layout_file: configs/layouts/scenario_5.layout
+    horizon: 400
+    seeds: [67, 607, 6007, 60007]
+    swap_roles: true
+    max_action_time_ms: 100
+    teammate:
+      type: python_class
+      path: groups/grupo_teammate_escenario_5/agent.py
+      class_name: StudentAgent
+      config_path: groups/grupo_teammate_escenario_5/config.yaml
+      model_path: groups/grupo_teammate_escenario_5/model.pt
+      random_action_prob: 0.05
+      sticky_action_prob: 0.05
+
+  - id: 6
+    name: escenario_6
+    enabled: false
+    layout_name: null
+    layout_file: configs/layouts/scenario_6.layout
+    horizon: 500
+    seeds: [67, 607, 6007, 60007]
+    swap_roles: true
+    max_action_time_ms: 100
+    teammate:
+      type: python_class
+      path: groups/grupo_teammate_escenario_6/agent.py
+      class_name: StudentAgent
+      config_path: groups/grupo_teammate_escenario_6/config.yaml
+      model_path: groups/grupo_teammate_escenario_6/model.pt
+      random_action_prob: 0.05
+      sticky_action_prob: 0.05

@@ -12,8 +12,9 @@ policies:
     class_name: TrainedAgent
     name: trained_agent
     config:
-      model_path: ../train/models/bc_agent.pt
+      model_path: ../train/models/ppo_agent.pt
       deterministic: true
+      layout_name: tutorial_2
     random_action_prob: 0.0
     max_action_time_ms: 100
     invalid_action: stay
