@@ -1,4 +1,4 @@
-# Proyecto de Entrenamiento de Agentes de IA en Overcooked 🍳🤖
+# Proyecto de Entrenamiento de Agentes de IA en Overcooked  🍳🤖
 
 Este repositorio implementa un sistema completo y modular para entrenar agentes de Inteligencia Artificial capaces de jugar eficientemente en **Overcooked AI**. El flujo de trabajo combina **Clonación de Comportamiento (*Behavioral Cloning* - BC)** a partir de grabaciones de demostraciones humanas y un posterior ajuste fino mediante **Optimización de Políticas Próximas (*Proximal Policy Optimization* - PPO)** usando auto-juego (*self-play*).
 
